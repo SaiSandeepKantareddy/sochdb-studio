@@ -42,12 +42,13 @@ pub async fn connect(
     
     // Use unified AppState connect
     state.connect(path_buf).await?;
+    let uptime_seconds = state.uptime_seconds().await;
 
     Ok(ConnectionInfo {
         path,
         connected: true,
         version: "0.1.0".to_string(),
-        uptime_seconds: 0,
+        uptime_seconds,
     })
 }
 
@@ -62,6 +63,7 @@ pub async fn disconnect(state: State<'_, Arc<AppState>>) -> Result<(), String> {
 #[tauri::command]
 pub async fn get_stats(state: State<'_, Arc<AppState>>) -> Result<DatabaseStats, String> {
     let status = state.get_status().await;
+    let uptime_seconds = state.uptime_seconds().await;
     
     if !status.db_connected {
         return Err("No active connection".to_string());
@@ -75,13 +77,16 @@ pub async fn get_stats(state: State<'_, Arc<AppState>>) -> Result<DatabaseStats,
     let db_stats = mcp.db_stats();
     let conn = mcp.connection();
     
-    // Count tables from scan (tables are top-level paths)
-    conn.begin().ok();
-    let scan_result = conn.scan("/").unwrap_or_default();
+    // Count collections from a true root scan. A normal "/" prefix scan is
+    // rejected by the storage layer's minimum-prefix safety check.
+    let kernel = conn.kernel();
+    let txn = kernel.begin_read_only_fast();
+    let scan_result = kernel.scan_unchecked(txn, b"").unwrap_or_default();
     let mut table_set = std::collections::HashSet::new();
     let mut total_rows = 0usize;
     for (key, _) in &scan_result {
-        let parts: Vec<&str> = key.trim_start_matches('/').split('/').collect();
+        let path = String::from_utf8_lossy(key);
+        let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
         if let Some(first) = parts.first() {
             if !first.is_empty() {
                 table_set.insert(first.to_string());
@@ -89,7 +94,7 @@ pub async fn get_stats(state: State<'_, Arc<AppState>>) -> Result<DatabaseStats,
         }
         total_rows += 1;
     }
-    conn.abort().ok();
+    kernel.abort_read_only_fast(txn);
     
     Ok(DatabaseStats {
         memtable_size_bytes: db_stats.bytes_written as usize,
@@ -100,7 +105,7 @@ pub async fn get_stats(state: State<'_, Arc<AppState>>) -> Result<DatabaseStats,
             db_stats.transactions_committed + db_stats.transactions_aborted
         ) as usize,
         last_checkpoint_lsn: 0, // Not exposed in Stats yet
-        uptime_seconds: 0, // TODO: Track startup time
+        uptime_seconds,
         version: env!("CARGO_PKG_VERSION").to_string(),
         active_snapshots: 0, // TODO: Expose from MVCC
         min_active_timestamp: 0, // TODO: Expose from MVCC

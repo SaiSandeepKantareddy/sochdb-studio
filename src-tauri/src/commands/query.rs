@@ -44,8 +44,8 @@ pub async fn execute_query(
         id: serde_json::Value::Number(1.into()),
         method: "tools/call".to_string(),
         params: serde_json::json!({
-            "name": "query",
-            "arguments": { "query": query }
+            "name": "sochdb_query",
+            "arguments": { "query": query, "format": "json" }
         }),
     };
     
@@ -54,12 +54,53 @@ pub async fn execute_query(
     
     match resp.result {
         Some(result) => {
-            // Parse MCP result into QueryResult
+            let text = result
+                .get("content")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|v| v.get("text"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+
+            let (columns, parsed_rows): (Vec<String>, Vec<Vec<serde_json::Value>>) =
+                match serde_json::from_str::<serde_json::Value>(text) {
+                    Ok(serde_json::Value::Array(items)) => {
+                        if let Some(first_object) = items.first().and_then(|item| item.as_object()) {
+                            let mut columns: Vec<String> = first_object.keys().cloned().collect();
+                            columns.sort();
+                            let rows = items
+                                .into_iter()
+                                .map(|item| {
+                                    if let Some(obj) = item.as_object() {
+                                        columns
+                                            .iter()
+                                            .map(|col| obj.get(col).cloned().unwrap_or(serde_json::Value::Null))
+                                            .collect()
+                                    } else {
+                                        vec![item]
+                                    }
+                                })
+                                .collect();
+                            (columns, rows)
+                        } else {
+                            (
+                                vec!["result".to_string()],
+                                items.into_iter().map(|item| vec![item]).collect(),
+                            )
+                        }
+                    }
+                    Ok(value) => (vec!["result".to_string()], vec![vec![value]]),
+                    Err(_) => (
+                        vec!["result".to_string()],
+                        vec![vec![serde_json::Value::String(text.to_string())]],
+                    ),
+                };
+
             Ok(QueryResult {
-                columns: vec!["result".to_string()],
-                rows: vec![vec![result]],
+                columns,
+                rows: parsed_rows.clone(),
                 stats: QueryStats {
-                    row_count: 1,
+                    row_count: parsed_rows.len(),
                     execution_time_ms: execution_time,
                     scanned_rows: 0,
                 },

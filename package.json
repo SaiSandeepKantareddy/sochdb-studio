@@ -4,12 +4,16 @@
   "version": "0.2.4",
   "type": "module",
   "scripts": {
+    "sync:workbench": "node scripts/generate-workbench-data.mjs",
+    "studio:backend": "node server/studio-backend.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.0",
+    "@grpc/proto-loader": "^0.8.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.4.2",
     "@tauri-apps/plugin-opener": "^2",

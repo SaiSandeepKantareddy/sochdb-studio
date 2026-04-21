@@ -123,3 +123,8 @@ src-tauri/target
 target
 **/*.rs.bk
 *.pdb
+
+# Local Studio runtime state
+server-data/
+sochdb-studio/
+.lock

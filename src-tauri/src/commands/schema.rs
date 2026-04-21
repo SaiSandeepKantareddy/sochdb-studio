@@ -67,7 +67,7 @@ pub async fn get_schema(
         id: serde_json::Value::Number(1.into()),
         method: "tools/call".to_string(),
         params: serde_json::json!({
-            "name": "list_tables",
+            "name": "sochdb_list_tables",
             "arguments": {}
         }),
     };

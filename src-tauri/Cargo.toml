@@ -24,10 +24,10 @@ tokio = { version = "1", features = ["full"] }
 base64 = "0.22"
 
 # SochDB integration
-sochdb = { version = "0.4.0", path = "../../sochdb/sochdb-client", features = ["embedded"] }
-sochdb-core = { version = "0.4.0", path = "../../sochdb/sochdb-core" }
-sochdb-storage = { version = "0.4.0", path = "../../sochdb/sochdb-storage" }
-sochdb-mcp = { version = "0.4.0", path = "../../sochdb/sochdb-mcp" }
+sochdb = { version = "0.5.0", path = "../../sochdb/sochdb-client", features = ["embedded"] }
+sochdb-core = { version = "0.5.0", path = "../../sochdb/sochdb-core" }
+sochdb-storage = { version = "0.5.0", path = "../../sochdb/sochdb-storage" }
+sochdb-mcp = { version = "0.5.0", path = "../../sochdb/sochdb-mcp" }
 
 # Async utilities
 parking_lot = "0.12"

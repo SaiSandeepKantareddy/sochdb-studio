@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
 use sochdb::connection::EmbeddedConnection;
 use sochdb_mcp::McpServer;
@@ -36,6 +37,8 @@ pub struct AppState {
     pub mcp_server: Arc<RwLock<Option<McpServer>>>,
     /// Current database path
     pub db_path: Arc<RwLock<Option<PathBuf>>>,
+    /// Time the current DB session was established
+    pub connected_at: Arc<RwLock<Option<Instant>>>,
     /// Service status for UI
     pub status: Arc<RwLock<ServiceStatus>>,
     /// Command policy for access control
@@ -48,6 +51,7 @@ impl AppState {
             connection: Arc::new(RwLock::new(None)),
             mcp_server: Arc::new(RwLock::new(None)),
             db_path: Arc::new(RwLock::new(None)),
+            connected_at: Arc::new(RwLock::new(None)),
             status: Arc::new(RwLock::new(ServiceStatus::default())),
             policy: Arc::new(RwLock::new(CommandPolicy::default())),
         }
@@ -93,6 +97,11 @@ impl AppState {
             let mut path_lock = self.db_path.write().await;
             *path_lock = Some(path);
         }
+
+        {
+            let mut connected_at = self.connected_at.write().await;
+            *connected_at = Some(Instant::now());
+        }
         
         Ok(())
     }
@@ -112,11 +121,24 @@ impl AppState {
         
         let mut path_lock = self.db_path.write().await;
         *path_lock = None;
+
+        let mut connected_at = self.connected_at.write().await;
+        *connected_at = None;
     }
 
     /// Get current status
     pub async fn get_status(&self) -> ServiceStatus {
         self.status.read().await.clone()
+    }
+
+    /// Get seconds since the current DB session connected
+    pub async fn uptime_seconds(&self) -> u64 {
+        self.connected_at
+            .read()
+            .await
+            .as_ref()
+            .map(|started| started.elapsed().as_secs())
+            .unwrap_or(0)
     }
 }
 
