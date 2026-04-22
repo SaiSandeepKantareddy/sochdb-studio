@@ -393,6 +393,11 @@ function resolveStudioDataClient(): StudioDataClient {
   if (webBaseUrl) {
     return createHttpStudioDataClient(webBaseUrl.replace(/\/$/, ''));
   }
+  const isTauriRuntime =
+    typeof window !== 'undefined' && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
+  if (typeof window !== 'undefined' && !isTauriRuntime) {
+    return createHttpStudioDataClient('');
+  }
   return createTauriStudioDataClient();
 }
 

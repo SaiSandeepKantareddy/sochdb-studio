@@ -4,7 +4,7 @@ import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROTO_PATH = path.resolve(__dirname, '../../sochdb-2.0/sochdb-grpc/proto/sochdb.proto');
+const PROTO_PATH = path.resolve(__dirname, './proto/sochdb.proto');
 
 const packageDef = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,

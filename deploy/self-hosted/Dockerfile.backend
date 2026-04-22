@@ -1,0 +1,13 @@
+FROM node:22-bookworm-slim AS base
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY server ./server
+
+ENV STUDIO_BACKEND_PORT=4318
+EXPOSE 4318
+
+CMD ["npm", "run", "studio:backend"]
