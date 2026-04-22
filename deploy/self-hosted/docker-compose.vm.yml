@@ -10,7 +10,7 @@ services:
     volumes:
       - studio_state:/data
     ports:
-      - "4318:4318"
+      - "127.0.0.1:4318:4318"
     restart: unless-stopped
 
   studio-frontend:
@@ -23,7 +23,7 @@ services:
     depends_on:
       - studio-backend
     ports:
-      - "3000:80"
+      - "80:80"
     restart: unless-stopped
 
 volumes:
