@@ -15,6 +15,7 @@ import {
   listWorkspaces,
   markInstanceConnected,
   markProjectConnected,
+  revokeApiKey,
 } from './projectStore.mjs';
 
 const port = Number(process.env.STUDIO_BACKEND_PORT || 4318);
@@ -419,6 +420,17 @@ const server = http.createServer(async (req, res) => {
         workspaceId: body.workspaceId || 'default',
         projectId: body.projectId,
         name: body.name,
+      });
+      json(res, 200, result);
+      return;
+    }
+
+    if (req.method === 'DELETE' && url.pathname === '/api/studio/api-keys') {
+      const body = await parseBody(req);
+      const result = revokeApiKey({
+        workspaceId: body.workspaceId || 'default',
+        projectId: body.projectId,
+        apiKeyId: body.apiKeyId,
       });
       json(res, 200, result);
       return;

@@ -130,6 +130,7 @@ export interface StudioDataClient {
   createProject(input: { name: string; dbPath?: string; workspaceId?: string }): Promise<StudioProject>;
   createInstance(input: { projectId: string; name: string; type?: string; dbPath?: string; host?: string; port?: number; apiKey?: string; tls?: boolean; workspaceId?: string }): Promise<StudioInstance>;
   createApiKey(input: { projectId: string; name: string; workspaceId?: string }): Promise<{ apiKey: StudioApiKey; secret: string }>;
+  revokeApiKey(input: { projectId: string; apiKeyId: string; workspaceId?: string }): Promise<{ ok: boolean; project: StudioProject }>;
   listEvents(input: { projectId: string; workspaceId?: string; limit?: number }): Promise<{ project: StudioProject; events: StudioIngestEvent[] }>;
   ingestEvents(input: { apiKey: string; source?: string; events: Array<Record<string, unknown>> }): Promise<{ ok: boolean; ingested: number; eventIds: string[] }>;
 }
@@ -262,6 +263,9 @@ function createTauriStudioDataClient(): StudioDataClient {
     async createApiKey() {
       throw new Error('Project API keys are available in Studio web mode');
     },
+    async revokeApiKey() {
+      throw new Error('Project API key revocation is available in Studio web mode');
+    },
     async listEvents() {
       return {
         project: {
@@ -361,6 +365,12 @@ function createHttpStudioDataClient(baseUrl: string): StudioDataClient {
     createApiKey(input) {
       return request<{ apiKey: StudioApiKey; secret: string }>('/api/studio/api-keys', {
         method: 'POST',
+        body: JSON.stringify(input),
+      });
+    },
+    revokeApiKey(input) {
+      return request<{ ok: boolean; project: StudioProject }>('/api/studio/api-keys', {
+        method: 'DELETE',
         body: JSON.stringify(input),
       });
     },

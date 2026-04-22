@@ -315,6 +315,39 @@ export function createApiKey({
   };
 }
 
+export function revokeApiKey({
+  workspaceId = 'default',
+  projectId,
+  apiKeyId,
+}) {
+  if (!projectId) {
+    throw new Error('Project id is required');
+  }
+  if (!apiKeyId) {
+    throw new Error('API key id is required');
+  }
+
+  const state = readState();
+  const workspace = getWorkspace(state, workspaceId);
+  const project = workspace.projects.find((item) => item.id === projectId);
+  if (!project) {
+    throw new Error(`Project not found: ${projectId}`);
+  }
+
+  const before = (project.apiKeys || []).length;
+  project.apiKeys = (project.apiKeys || []).filter((item) => item.id !== apiKeyId);
+  if (project.apiKeys.length === before) {
+    throw new Error(`API key not found: ${apiKeyId}`);
+  }
+
+  writeState(state);
+
+  return {
+    ok: true,
+    project: serializeProject(project),
+  };
+}
+
 export function authenticateApiKey(token) {
   if (!token?.trim()) {
     return null;
