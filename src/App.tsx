@@ -980,6 +980,9 @@ const ConnectionModal = ({
   const [remotePort, setRemotePort] = useState('50051');
   const [remoteApiKey, setRemoteApiKey] = useState('');
   const [remoteTls, setRemoteTls] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const workspaceSectionRef = useRef<HTMLDivElement | null>(null);
+  const projectSelectRef = useRef<HTMLSelectElement | null>(null);
   const isWebMode = clientMode === 'http';
   const isTauriRuntime = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const isLockError = Boolean(errorMessage?.toLowerCase().includes('lock'));
@@ -1037,6 +1040,13 @@ const ConnectionModal = ({
     }
   }, [selectedInstanceId]);
 
+  const focusWorkspaceProjectSection = () => {
+    workspaceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => {
+      projectSelectRef.current?.focus();
+    }, 150);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in overflow-y-auto">
       <div className="bg-background-default border border-border-default rounded-2xl w-full max-w-4xl flex overflow-hidden shadow-2xl max-h-[90vh] min-h-[500px]">
@@ -1054,19 +1064,23 @@ const ConnectionModal = ({
               </div>
             </div>
           </button>
-          <button className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-background-muted text-text-muted transition-colors opacity-50 cursor-not-allowed">
-            <Icon name="zap" size={18} />
+          <button
+            type="button"
+            onClick={focusWorkspaceProjectSection}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-background-muted/60 border border-border-default text-text-default transition-colors hover:bg-background-muted hover:border-border-accent text-left"
+          >
+            <Icon name="layout" size={18} className="text-teal" />
             <div className="text-left">
               <div className="text-sm font-semibold">{isWebMode ? 'Workspace / Project' : 'Remote Server'}</div>
               <div className="text-[10px] text-text-muted">
-                {isWebMode ? 'Planned web/cloud project selector' : 'Connect via TCP/HTTP'}
+                {isWebMode ? 'Select the hosted workspace, project, and instance' : 'Connect via TCP/HTTP'}
               </div>
             </div>
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-8 flex flex-col bg-mesh relative overflow-y-auto">
+        <div ref={contentRef} className="flex-1 p-8 flex flex-col bg-mesh relative overflow-y-auto">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-text-default mb-2">
               {isWebMode ? 'Connect Through Studio Backend' : 'Connect to Database'}
@@ -1086,13 +1100,13 @@ const ConnectionModal = ({
                   {backendBaseUrl || 'http://127.0.0.1:4318'}
                 </div>
                 <div className="mt-2 text-xs text-text-muted/80">
-                  This will later become a workspace/project selection flow more like Langfuse or MLflow.
+                  The browser UI talks to the Studio backend here, and the backend manages your workspace, projects, and instances.
                 </div>
               </div>
             )}
 
             {isWebMode && (
-              <div className="space-y-3">
+              <div ref={workspaceSectionRef} className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Workspace</label>
                   <div className="mt-2 rounded-lg border border-border-default bg-background-app px-4 py-2.5 text-sm text-text-default">
@@ -1102,6 +1116,7 @@ const ConnectionModal = ({
                 <div>
                   <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Known Projects</label>
                   <select
+                    ref={projectSelectRef}
                     value={selectedProjectId}
                     onChange={(e) => setSelectedProjectId(e.target.value)}
                     className="mt-2 w-full bg-background-app border border-border-input rounded-lg px-4 py-2.5 text-text-default text-sm outline-none"
@@ -1666,6 +1681,7 @@ function App() {
   };
 
   const renderContent = () => {
+    const isRemoteOverview = connectionInfo?.instanceType === 'remote';
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -1691,13 +1707,23 @@ function App() {
               />
               <StatCard icon="database" label="Tables" value={status?.total_tables ?? '0'} sub="Registered" color="orange" />
               <StatCard icon="check" label="Uptime" value={status?.uptime_seconds ? `${Math.floor(status.uptime_seconds / 60)}m ${status.uptime_seconds % 60}s` : '0s'} sub="Since Restart" color="blue" />
-              <StatCard
-                icon="refresh"
-                label="Read / Write"
-                value={`${formatBytesCompact(status?.wal_size_bytes)} / ${formatBytesCompact(status?.memtable_size_bytes)}`}
-                sub="Cumulative backend I/O activity"
-                color="red"
-              />
+              {isRemoteOverview ? (
+                <StatCard
+                  icon="layout"
+                  label="Namespaces"
+                  value={status?.namespace_count?.toLocaleString?.() ?? '1'}
+                  sub={status?.health_status ? `Remote health: ${status.health_status}` : 'Remote namespace inventory'}
+                  color="red"
+                />
+              ) : (
+                <StatCard
+                  icon="refresh"
+                  label="Read / Write"
+                  value={`${formatBytesCompact(status?.wal_size_bytes)} / ${formatBytesCompact(status?.memtable_size_bytes)}`}
+                  sub="Cumulative backend I/O activity"
+                  color="red"
+                />
+              )}
             </div>
 
             {/* Tables Section */}

@@ -38,7 +38,40 @@ function parseSelectCollectionQuery(query) {
   if (/^show\s+namespaces$/i.test(trimmed) || /^select\s+\*\s+from\s+namespaces$/i.test(trimmed)) {
     return { kind: 'namespaces' };
   }
+  const match = trimmed.match(/^select\s+\*\s+from\s+([a-zA-Z0-9_:-]+)(?:\s+limit\s+(\d+))?$/i);
+  if (match) {
+    return {
+      kind: 'collection-documents',
+      tableName: match[1],
+      limit: match[2] ? Number(match[2]) : 25,
+    };
+  }
   return null;
+}
+
+function splitTableName(tableName) {
+  if (tableName.includes(':')) {
+    const [namespace, name] = tableName.split(':', 2);
+    return { namespace, collectionName: name };
+  }
+  return { namespace: 'default', collectionName: tableName };
+}
+
+function parseDocumentPath(pathLike) {
+  const trimmed = String(pathLike || '').trim().replace(/^\/+/, '');
+  if (!trimmed) {
+    throw new Error('Missing document path');
+  }
+
+  const parts = trimmed.split('/');
+  if (parts.length < 2) {
+    throw new Error('Document path must look like /collection/document-id or /namespace:collection/document-id');
+  }
+
+  const tableName = parts.shift();
+  const documentId = parts.join('/');
+  const { namespace, collectionName } = splitTableName(tableName);
+  return { namespace, collectionName, documentId };
 }
 
 export class GrpcClient {
@@ -158,9 +191,7 @@ export class GrpcClient {
   }
 
   async describeTable(tableName) {
-    const [namespace, collectionName] = tableName.includes(':')
-      ? tableName.split(':', 2)
-      : ['default', tableName];
+    const { namespace, collectionName } = splitTableName(tableName);
 
     const response = await unary(
       this.collectionStub,
@@ -179,6 +210,64 @@ export class GrpcClient {
     return response.collection;
   }
 
+  async getDocument(pathLike) {
+    const { namespace, collectionName, documentId } = parseDocumentPath(pathLike);
+    const response = await unary(
+      this.collectionStub,
+      'GetDocument',
+      {
+        namespace,
+        collection_name: collectionName,
+        document_id: documentId,
+      },
+      this.metadata
+    );
+
+    if (response.error) {
+      throw new Error(response.error);
+    }
+
+    return response.document;
+  }
+
+  async listCollectionDocuments(tableName, limit = 25) {
+    const { namespace, collectionName } = splitTableName(tableName);
+    const collection = await this.describeTable(tableName);
+    const dimension = Number(collection.dimension || 0);
+    if (!dimension) {
+      throw new Error(`Collection ${tableName} does not report a valid dimension`);
+    }
+
+    const response = await unary(
+      this.collectionStub,
+      'SearchCollection',
+      {
+        namespace,
+        collection_name: collectionName,
+        query: new Array(dimension).fill(0),
+        k: Math.max(1, Math.min(Number(limit) || 25, 100)),
+        filter: {},
+      },
+      this.metadata
+    );
+
+    if (response.error) {
+      throw new Error(response.error);
+    }
+
+    return (response.results || []).map((result) => {
+      const document = result.document || {};
+      return {
+        _path: `/${namespace === 'default' ? collectionName : `${namespace}:${collectionName}`}/${document.id}`,
+        id: document.id,
+        content: document.content,
+        metadata: document.metadata || {},
+        embedding_length: Array.isArray(document.embedding) ? document.embedding.length : 0,
+        score: Number(result.score || 0),
+      };
+    });
+  }
+
   async executeQuery(query) {
     const parsed = parseSelectCollectionQuery(query);
     if (!parsed) {
@@ -195,6 +284,27 @@ export class GrpcClient {
       ]);
       return {
         columns: ['namespace', 'storage_bytes', 'vector_count', 'collection_count'],
+        rows,
+        stats: {
+          row_count: rows.length,
+          execution_time_ms: 0,
+          scanned_rows: rows.length,
+        },
+      };
+    }
+
+    if (parsed.kind === 'collection-documents') {
+      const documents = await this.listCollectionDocuments(parsed.tableName, parsed.limit);
+      const rows = documents.map((document) => [
+        document._path,
+        document.id,
+        document.content,
+        JSON.stringify(document.metadata),
+        document.embedding_length,
+        document.score,
+      ]);
+      return {
+        columns: ['_path', 'id', 'content', 'metadata', 'embedding_length', 'score'],
         rows,
         stats: {
           row_count: rows.length,
@@ -280,6 +390,22 @@ export class GrpcClient {
               null,
               2
             ),
+          },
+        ],
+      };
+    }
+
+    if (toolName === 'sochdb_get') {
+      const path = args.path || args.key;
+      if (!path) {
+        throw new Error('Missing document path');
+      }
+      const document = await this.getDocument(String(path));
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(document, null, 2),
           },
         ],
       };
