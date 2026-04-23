@@ -7,6 +7,8 @@ services:
     environment:
       STUDIO_BACKEND_PORT: 4318
       STUDIO_BACKEND_STATE_PATH: /data/studio-state.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - studio_state:/data
     ports:

@@ -38,6 +38,7 @@ docker compose -f docker-compose.vm.yml up -d --build
 - In Studio, create a remote instance pointing at your SochDB server host/port.
 - The backend is intentionally bound to `127.0.0.1` while the frontend proxies `/api/*` to it.
 - That means browser clients can still use Studio normally, but the raw backend port is no longer public by default.
+- If the SochDB gRPC server runs on the same VM outside Docker, use `host.docker.internal` as the Studio remote host.
 - For a more Langfuse-like feel, issue a project API key in Studio and send events to:
 
 ```bash
