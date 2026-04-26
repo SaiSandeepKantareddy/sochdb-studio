@@ -135,6 +135,16 @@ export interface StudioDataClient {
   ingestEvents(input: { apiKey: string; source?: string; events: Array<Record<string, unknown>> }): Promise<{ ok: boolean; ingested: number; eventIds: string[] }>;
 }
 
+let desktopHttpOverrideBaseUrl: string | null = null;
+
+export function setStudioDesktopHttpOverride(baseUrl: string | null) {
+  desktopHttpOverrideBaseUrl = baseUrl ? baseUrl.replace(/\/$/, '') : null;
+}
+
+export function getStudioDesktopHttpOverride() {
+  return desktopHttpOverrideBaseUrl;
+}
+
 function parseTableNames(content: string): string[] {
   try {
     const parsed = JSON.parse(content);
@@ -411,7 +421,59 @@ function resolveStudioDataClient(): StudioDataClient {
   return createTauriStudioDataClient();
 }
 
-export const studioDataClient = resolveStudioDataClient();
+const defaultStudioDataClient = resolveStudioDataClient();
+
+function getActiveStudioDataClient(): StudioDataClient {
+  if (desktopHttpOverrideBaseUrl) {
+    return createHttpStudioDataClient(desktopHttpOverrideBaseUrl);
+  }
+  return defaultStudioDataClient;
+}
+
+export const studioDataClient: StudioDataClient = {
+  get mode() {
+    return getActiveStudioDataClient().mode;
+  },
+  connect(path, options) {
+    return getActiveStudioDataClient().connect(path, options);
+  },
+  disconnect() {
+    return getActiveStudioDataClient().disconnect();
+  },
+  getStats() {
+    return getActiveStudioDataClient().getStats();
+  },
+  executeQuery(query) {
+    return getActiveStudioDataClient().executeQuery(query);
+  },
+  mcpCallTool(toolName, args) {
+    return getActiveStudioDataClient().mcpCallTool(toolName, args);
+  },
+  listTables() {
+    return getActiveStudioDataClient().listTables();
+  },
+  listWorkspaces() {
+    return getActiveStudioDataClient().listWorkspaces();
+  },
+  createProject(input) {
+    return getActiveStudioDataClient().createProject(input);
+  },
+  createInstance(input) {
+    return getActiveStudioDataClient().createInstance(input);
+  },
+  createApiKey(input) {
+    return getActiveStudioDataClient().createApiKey(input);
+  },
+  revokeApiKey(input) {
+    return getActiveStudioDataClient().revokeApiKey(input);
+  },
+  listEvents(input) {
+    return getActiveStudioDataClient().listEvents(input);
+  },
+  ingestEvents(input) {
+    return getActiveStudioDataClient().ingestEvents(input);
+  },
+};
 export const studioClientMode = studioDataClient.mode;
 export const studioBackendBaseUrl =
   ((import.meta.env.VITE_STUDIO_API_BASE_URL as string | undefined)?.trim() || null);

@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import WorkbenchView from './features/workbench/WorkbenchView';
 import {
+  getStudioDesktopHttpOverride,
+  setStudioDesktopHttpOverride,
   studioBackendBaseUrl,
   studioClientMode,
   studioDataClient,
@@ -75,7 +77,17 @@ const SochIcon = ({ size = 24 }: { size?: number }) => (
 // --- Components ---
 
 // --- Sidebar Component ---
-const Sidebar = ({ activeTab, setActiveTab, connected }: { activeTab: string, setActiveTab: (tab: string) => void, connected: boolean }) => {
+const Sidebar = ({
+  activeTab,
+  setActiveTab,
+  connected,
+  onSwitchConnection,
+}: {
+  activeTab: string,
+  setActiveTab: (tab: string) => void,
+  connected: boolean,
+  onSwitchConnection: () => void,
+}) => {
   const menuItems = [
     { id: 'dashboard', label: 'Overview', icon: 'layout' },
     { id: 'workbench', label: 'Workbench', icon: 'search' },
@@ -105,6 +117,13 @@ const Sidebar = ({ activeTab, setActiveTab, connected }: { activeTab: string, se
         <div className="text-[10px] text-text-muted font-mono truncate">
           0.1.0
         </div>
+        <button
+          type="button"
+          onClick={onSwitchConnection}
+          className="mt-3 w-full px-3 py-2 rounded-lg border border-border-default bg-background-app text-text-muted hover:text-text-default hover:bg-background-muted/70 transition-colors text-xs font-semibold"
+        >
+          Switch Connection
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1">
@@ -167,15 +186,6 @@ const StatCard = ({ icon, label, value, sub, color }: any) => {
     </div>
   );
 };
-
-const formatBytesCompact = (bytes: number | null | undefined) => {
-  if (bytes == null || Number.isNaN(bytes)) return '0 B';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-};
-
 
 // --- LLM Settings Tab Component ---
 const LlmSettingsTab = () => {
@@ -980,10 +990,13 @@ const ConnectionModal = ({
   const [remotePort, setRemotePort] = useState('50051');
   const [remoteApiKey, setRemoteApiKey] = useState('');
   const [remoteTls, setRemoteTls] = useState(false);
+  const [desktopHostedMode, setDesktopHostedMode] = useState(Boolean(getStudioDesktopHttpOverride()));
   const contentRef = useRef<HTMLDivElement | null>(null);
   const workspaceSectionRef = useRef<HTMLDivElement | null>(null);
   const projectSelectRef = useRef<HTMLSelectElement | null>(null);
   const isWebMode = clientMode === 'http';
+  const hostedDesktopBaseUrl = 'http://studio.agentslab.host:3000';
+  const isHostedMode = isWebMode || desktopHostedMode;
   const isTauriRuntime = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const isLockError = Boolean(errorMessage?.toLowerCase().includes('lock'));
   const isPermissionError = Boolean(
@@ -1001,18 +1014,23 @@ const ConnectionModal = ({
   }
 
   useEffect(() => {
-    if (!isWebMode) return;
+    if (!isHostedMode) return;
     void studioDataClient.listWorkspaces()
       .then(setWorkspaces)
       .catch(() => setWorkspaces([]));
-  }, [isWebMode]);
+  }, [isHostedMode]);
 
   const defaultWorkspace = workspaces[0];
   const knownProjects = defaultWorkspace?.projects || [];
   const selectedProject = knownProjects.find((project) => project.id === selectedProjectId) || null;
   const knownInstances: StudioInstance[] = selectedProject?.instances || [];
   const selectedInstance = knownInstances.find((instance) => instance.id === selectedInstanceId) || null;
-
+  const hostedDemoPreset = {
+    name: 'Hosted Demo Server',
+    host: 'studio.agentslab.host',
+    port: '50053',
+    tls: false,
+  };
   useEffect(() => {
     if (selectedProject) {
       setProjectName(selectedProject.name);
@@ -1047,6 +1065,24 @@ const ConnectionModal = ({
     }, 150);
   };
 
+  const applyHostedDemoPreset = () => {
+    setStudioDesktopHttpOverride(hostedDesktopBaseUrl);
+    setDesktopHostedMode(true);
+    setInstanceType('remote');
+    setInstanceName(hostedDemoPreset.name);
+    setRemoteHost(hostedDemoPreset.host);
+    setRemotePort(hostedDemoPreset.port);
+    setRemoteTls(hostedDemoPreset.tls);
+    setRemoteApiKey('');
+    contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' });
+  };
+
+  const activateLocalStorageMode = () => {
+    setStudioDesktopHttpOverride(null);
+    setDesktopHostedMode(false);
+    setInstanceType('embedded');
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-in overflow-y-auto">
       <div className="bg-background-default border border-border-default rounded-2xl w-full max-w-4xl flex overflow-hidden shadow-2xl max-h-[90vh] min-h-[500px]">
@@ -1055,28 +1091,48 @@ const ConnectionModal = ({
           <h2 className="text-lg font-bold text-text-default mb-6 flex items-center gap-2">
             <SochIcon size={24} /> SochDB
           </h2>
-          <button className="flex items-center gap-3 px-4 py-3 rounded-xl bg-background-app border border-border-accent text-text-default shadow-sm">
-            <Icon name={isWebMode ? "zap" : "database"} size={18} className="text-teal" />
-            <div className="text-left">
-              <div className="text-sm font-semibold">{isWebMode ? 'Studio Backend' : 'Local Storage'}</div>
-              <div className="text-[10px] text-text-muted">
-                {isWebMode ? 'Browser UI connected over HTTP' : 'Embedded LSM Engine'}
-              </div>
-            </div>
-          </button>
           <button
             type="button"
-            onClick={focusWorkspaceProjectSection}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-background-muted/60 border border-border-default text-text-default transition-colors hover:bg-background-muted hover:border-border-accent text-left"
+            onClick={activateLocalStorageMode}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-background-app border border-border-accent text-text-default shadow-sm text-left"
           >
-            <Icon name="layout" size={18} className="text-teal" />
+            <Icon name={isHostedMode ? "zap" : "database"} size={18} className="text-teal" />
             <div className="text-left">
-              <div className="text-sm font-semibold">{isWebMode ? 'Workspace / Project' : 'Remote Server'}</div>
+              <div className="text-sm font-semibold">{isHostedMode ? 'Studio Backend' : 'Local Storage'}</div>
               <div className="text-[10px] text-text-muted">
-                {isWebMode ? 'Select the hosted workspace, project, and instance' : 'Connect via TCP/HTTP'}
+                {isHostedMode ? 'Desktop UI connected to hosted Studio over HTTP' : 'Embedded LSM Engine'}
               </div>
             </div>
           </button>
+          {isHostedMode ? (
+            <button
+              type="button"
+              onClick={focusWorkspaceProjectSection}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-background-muted/60 border border-border-default text-text-default transition-colors hover:bg-background-muted hover:border-border-accent text-left"
+            >
+              <Icon name="layout" size={18} className="text-teal" />
+              <div className="text-left">
+                <div className="text-sm font-semibold">{isWebMode ? 'Workspace / Project' : 'Remote Server'}</div>
+                <div className="text-[10px] text-text-muted">
+                  {isWebMode ? 'Select the hosted workspace, project, and instance' : 'Load the hosted server experience inside this app'}
+                </div>
+              </div>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={applyHostedDemoPreset}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-background-muted/60 border border-border-default text-text-default transition-colors hover:bg-background-muted hover:border-border-accent text-left"
+            >
+              <Icon name="layout" size={18} className="text-teal" />
+              <div className="text-left">
+                <div className="text-sm font-semibold">Remote Server</div>
+                <div className="text-[10px] text-text-muted">
+                  Load the hosted server experience inside this app
+                </div>
+              </div>
+            </button>
+          )}
         </div>
 
         {/* Content */}
@@ -1093,19 +1149,19 @@ const ConnectionModal = ({
           </div>
 
           <div className="space-y-4 max-w-lg">
-            {isWebMode && (
+            {isHostedMode && (
               <div className="rounded-xl border border-border-default bg-background-muted/60 px-4 py-3 text-sm text-text-muted">
                 <div className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">Backend Endpoint</div>
                 <div className="font-mono text-text-default break-all">
-                  {backendBaseUrl || 'http://127.0.0.1:4318'}
+                  {backendBaseUrl || hostedDesktopBaseUrl}
                 </div>
                 <div className="mt-2 text-xs text-text-muted/80">
-                  The browser UI talks to the Studio backend here, and the backend manages your workspace, projects, and instances.
+                  The app talks to the hosted Studio backend here, and that backend manages your workspace, projects, and remote instances.
                 </div>
               </div>
             )}
 
-            {isWebMode && (
+            {isHostedMode && (
               <div ref={workspaceSectionRef} className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-text-muted uppercase tracking-wider">Workspace</label>
@@ -1264,8 +1320,12 @@ const ConnectionModal = ({
               {isWebMode ? (
                 <span className="text-text-muted/80">
                   {instanceType === 'embedded'
-                    ? 'In web mode, this path is interpreted by the Studio backend, not your browser.'
-                    : 'Remote instances now connect through the Studio backend over gRPC. Today that supports health, collection discovery, and metadata-oriented queries first.'}
+                    ? 'In hosted mode, this path is interpreted by the Studio backend, not your browser.'
+                    : 'Remote instances now connect through the hosted Studio backend over gRPC. Today that supports health, collection discovery, and metadata-oriented queries first.'}
+                </span>
+              ) : instanceType === 'remote' ? (
+                <span className="text-text-muted/80">
+                  The remote server flow stays inside this app. Use the hosted preset or enter a SochDB host and port directly.
                 </span>
               ) : !isTauriRuntime ? (
                 <span className="text-text-muted/80">
@@ -1354,6 +1414,29 @@ function App() {
 
   // Schema state
   const [tables, setTables] = useState<string[]>([]);
+
+  const handleSwitchConnection = async () => {
+    try {
+      await studioDataClient.disconnect();
+    } catch {
+      // Best-effort: we still want to reopen the connection modal.
+    }
+
+    setConnected(false);
+    setDemoMode(false);
+    setConnectionInfo(null);
+    setStatus(null);
+    setResults(null);
+    setQueryError(null);
+    setTables([]);
+    setKvKeys([]);
+    setSelectedKey(null);
+    setSelectedValue(null);
+    setSelectedTable('');
+    setConnectionError(null);
+    setShowConnectionModal(true);
+    setActiveTab('dashboard');
+  };
 
   // Keep the connection flow explicit for now. Auto-connect is convenient,
   // but it can mask backend lock issues while Studio is still stabilizing.
@@ -1682,6 +1765,9 @@ function App() {
 
   const renderContent = () => {
     const isRemoteOverview = connectionInfo?.instanceType === 'remote';
+    const connectionSummary = isRemoteOverview
+      ? (connectionInfo?.endpoint || 'Remote endpoint')
+      : (connectionInfo?.path || 'Embedded local database');
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -1717,10 +1803,10 @@ function App() {
                 />
               ) : (
                 <StatCard
-                  icon="refresh"
-                  label="Read / Write"
-                  value={`${formatBytesCompact(status?.wal_size_bytes)} / ${formatBytesCompact(status?.memtable_size_bytes)}`}
-                  sub="Cumulative backend I/O activity"
+                  icon="layout"
+                  label="Connection"
+                  value={connected ? 'Embedded' : 'Offline'}
+                  sub={connectionSummary}
                   color="red"
                 />
               )}
@@ -1984,7 +2070,14 @@ function App() {
   return (
     <div className="h-screen w-screen bg-mesh text-text-default flex flex-col overflow-hidden font-sans selection:bg-teal/30">
       <div className="flex-1 flex overflow-hidden">
-        {(connected || demoMode) && <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} connected={connected} />}
+        {(connected || demoMode) && (
+          <Sidebar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            connected={connected}
+            onSwitchConnection={() => void handleSwitchConnection()}
+          />
+        )}
         <main className="flex-1 overflow-hidden relative">
           {renderContent()}
         </main>
